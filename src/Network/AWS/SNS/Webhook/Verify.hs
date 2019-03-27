@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Network.AWS.SNS.Webhook.Verify (
   HasDownloadSNSCertificate (..)
 , MonadVerify
@@ -15,6 +16,7 @@ module Network.AWS.SNS.Webhook.Verify (
 , downloadSNSCertificateDefault
 , downloadSNSCertificateWithCache
 , withCertCache
+, embeddedCertificateStore
 
 -- * Re-exports
 , SignatureVerification(..)
@@ -45,6 +47,7 @@ import           Control.Monad.Reader          (MonadReader)
 import           Crypto.Store.X509             (readSignedObjectFromMemory)
 import           Data.ByteString               (ByteString)
 import qualified Data.Cache                    as Cache
+import           Data.FileEmbed                (embedFile)
 import           Data.Generics.Product         as X (HasType (..))
 import           Data.Generics.Sum             as X (AsType (..))
 import           Data.String.Conv              (toS)
@@ -55,6 +58,7 @@ import           Data.X509                     (Certificate (certPubKey),
                                                 SignatureALG (SignatureALG),
                                                 getCertificate, pubkeyToAlg)
 import           Data.X509.CertificateStore    (CertificateStore,
+                                                makeCertificateStore,
                                                 readCertificateStore)
 import           Data.X509.Validation          (FailedReason (..),
                                                 SignatureVerification (..),
@@ -222,3 +226,12 @@ withCertCache expireTime f = bracket initialize destroy (f . fst)
 
   toNanoSeconds :: NominalDiffTime -> Int
   toNanoSeconds = floor . (*1e9)
+
+-- | An embedded 'CertificateStore' which contains
+-- https://www.amazontrust.com/repository/R1-ServerCA1B.pem
+--
+-- Valid until Oct 19 00:00:00 2025 GMT
+embeddedCertificateStore :: CertificateStore
+embeddedCertificateStore =
+  makeCertificateStore $
+    readSignedObjectFromMemory $(embedFile "R1-ServerCA1B.pem")

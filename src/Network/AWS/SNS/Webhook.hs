@@ -12,6 +12,7 @@ module Network.AWS.SNS.Webhook (
 , downloadSNSCertificateDefault
 , downloadSNSCertificateWithCache
 , withCertCache
+, embeddedCertificateStore
 
 -- * Re-exports
 , SignatureVerification(..)

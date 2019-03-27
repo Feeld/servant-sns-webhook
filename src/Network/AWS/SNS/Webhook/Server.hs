@@ -67,14 +67,14 @@ data WebhookError
   deriving (Show, Generic)
 
 webhookServer
-  :: CertificateCache
-  -> CertificateStore
+  :: CertificateStore
+  -> CertificateCache
   -> ValidationCache
   -> Manager
   -> (Notification -> Handler ())
   -> Message
   -> Handler ()
-webhookServer certCache certStore validationCache manager onNotification =
+webhookServer certStore certCache validationCache manager onNotification =
   hoistServer
     (Proxy @SnsWebhookApi)
     (runWebhookServer WebhookEnv{certStore,validationCache,manager,certCache})
@@ -117,7 +117,7 @@ webhookServerT onNotification msg = do
     MsgUnsubscribeConfirmation _ Confirmation{topicArn} ->
       logInfoN $ "Received UnsubscribeConfirmation to " <> topicArn
 
-{-# INLINEABLE webhookServer #-}
+{-# INLINEABLE webhookServerT #-}
 
 throwIfUnverifiable
   :: MonadSNSWebhook m r e => Message -> m ()

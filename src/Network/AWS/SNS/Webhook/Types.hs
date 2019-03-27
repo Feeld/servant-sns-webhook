@@ -113,7 +113,10 @@ data Confirmation = Confirmation
   , signatureVersion :: Text
   , signature        :: Signature
   , signingCertURL   :: SigningCertUrl
-  } deriving (Eq, Show, Generic, ToJSON, FromJSON)
+  } deriving (Eq, Show, Generic)
+
+instance FromJSON Confirmation where
+  parseJSON = genericParseJSON jsonOpts
 
 data Notification = Notification
   { messageId        :: Text
@@ -127,6 +130,14 @@ data Notification = Notification
   , signingCertURL   :: SigningCertUrl
   } deriving (Eq, Show, Generic)
 
+
+instance FromJSON Notification where
+  parseJSON = genericParseJSON jsonOpts
+
+instance ToJSON Notification where
+  toJSON = injectType "Notification"
+         . genericToJSON jsonOpts
+
 instance FromJSON Message where
   parseJSON = withObject "SNS Message" $ \o -> do
     type_ <- o .: "Type"
@@ -134,20 +145,27 @@ instance FromJSON Message where
       "Notification" ->
         MsgNotification
           <$> pure (notificationSignedText o)
-          <*> genericParseJSON jsonOpts (Object o)
+          <*> parseJSON (Object o)
       "SubscriptionConfirmation" ->
         MsgSubscriptionConfirmation
           <$> pure (confirmationSignedText o)
-          <*> genericParseJSON jsonOpts (Object o)
+          <*> parseJSON (Object o)
       "UnsubscribeConfirmation" ->
         MsgUnsubscribeConfirmation
           <$> pure (confirmationSignedText o)
-          <*> genericParseJSON jsonOpts (Object o)
+          <*> parseJSON (Object o)
       _ -> fail "Unknown Type"
-    where
-    jsonOpts = defaultOptions { fieldLabelModifier = capitalize }
+
+jsonOpts :: Options
+jsonOpts = defaultOptions { fieldLabelModifier = capitalize }
+  where
     capitalize []     = []
     capitalize (x:xs) = toUpper x : xs
+
+injectType :: Text -> Value -> Value
+injectType type_ (Object o) =
+  Object $ HM.insert "Type" (String type_) o
+injectType _ other = other
 
 notificationSignedText :: Object -> SignedText
 notificationSignedText = signedTextParser

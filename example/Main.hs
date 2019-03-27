@@ -15,25 +15,30 @@ module Main (main) where
 import           Network.AWS.SNS.Webhook
 
 import           Control.Monad.IO.Class               (liftIO)
-import           Data.Maybe                           (fromMaybe)
+import           Data.Aeson                           (encode)
+import qualified Data.ByteString.Lazy.Char8           as LBS
 import           Network.HTTP.Client.TLS              (newTlsManager)
 import           Network.Wai.Handler.Warp             (run)
-import           Network.Wai.Middleware.RequestLogger (logStdoutDev)
-import           Servant
+import           Servant                              (Proxy (..), serve)
 import           System.Environment                   (lookupEnv)
+import           System.IO                            (hPutStrLn, stderr)
 
 main :: IO ()
 main = withCertCache 300 $ \certCache -> do
-  certStorePath <- fromMaybe "/etc/ssl/certs/ca-bundle.crt"
-    <$> lookupEnv "SSL_CERT_FILE"
   port <- maybe 3000 read <$> lookupEnv "PORT"
-  mCertStore <- readCertificateStore certStorePath
-  certStore <- case mCertStore of
-    Just x  -> pure x
-    Nothing -> fail $ "Could not read certificates at " <> certStorePath
   manager <- newTlsManager
+
   validationCache <- tofuValidationCache []
-  let mkServer = webhookServer certCache certStore validationCache manager
-  putStrLn $ "Running example webhook at port " <> show port
-  run port $ logStdoutDev $ serve (Proxy @SnsWebhookApi) $ mkServer $ \notif ->
-    liftIO $ print notif
+
+  mCertStorePath <- lookupEnv "SSL_CERT_FILE"
+  certStore <- case mCertStorePath of
+    Nothing -> pure embeddedCertificateStore
+    Just path -> do
+      mStore <- readCertificateStore path
+      maybe (fail $ "Could not read certificates at " <> path) pure mStore
+
+  let mkServer = webhookServer certStore certCache validationCache manager
+
+  hPutStrLn stderr $ "Running webhook at port " <> show port
+  run port $ serve (Proxy @SnsWebhookApi) $ mkServer $ \notification ->
+    liftIO $ LBS.putStrLn (encode notification)
