@@ -38,6 +38,7 @@ library
     http-client >=0.5 && <0.6,
     unliftio >=0.2 && <0.3,
     aeson >=1.4 && <1.5,
+    lens-aeson >=1 && <1.1,
     base64-bytestring >=1.0 && <1.1,
     hashable >=1.2 && <1.3,
     unordered-containers >=0.2 && <0.3,
@@ -48,3 +49,17 @@ library
   hs-source-dirs:      src
   ghc-options: -Wall -fwarn-redundant-constraints
   default-language:    Haskell2010
+
+executable servant-sns-webhook-example
+  main-is: Main.hs
+  hs-source-dirs:
+      example
+  ghc-options: -Wall -Wall -threaded
+  build-depends:
+    base,
+    warp,
+    aeson,
+    http-client-tls,
+    servant-sns-webhook,
+    servant-server,
+    wai-extra

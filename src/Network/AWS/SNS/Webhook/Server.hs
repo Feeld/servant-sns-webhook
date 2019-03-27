@@ -1,17 +1,20 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module Network.AWS.SNS.Webhook.Server (
   MonadSNSWebhook
 , SnsWebhookApi
+, webhookServerT
 , webhookServer
 ) where
 
@@ -19,11 +22,14 @@ import           Network.AWS.SNS.Webhook.Types
 import           Network.AWS.SNS.Webhook.Verify
 
 import           Control.Lens
-import           Control.Monad                  (void)
+import           Control.Monad                  (void, (<=<))
 import           Control.Monad.Error.Lens       (throwing)
+import           Control.Monad.Except           (ExceptT, runExceptT)
 import           Control.Monad.IO.Class         (MonadIO (liftIO))
-import           Control.Monad.Logger           (MonadLogger, logDebugN,
-                                                 logErrorN, logInfoN)
+import           Control.Monad.Logger           (LoggingT, MonadLogger,
+                                                 logDebugN, logErrorN, logInfoN,
+                                                 runStderrLoggingT)
+import           Control.Monad.Reader           (ReaderT (..))
 import           Data.Aeson                     (FromJSON)
 import           Data.Generics.Product          as X (HasType (..))
 import           Data.Generics.Sum.Typed        (AsType (..))
@@ -31,13 +37,14 @@ import           Data.Monoid                    ((<>))
 import           Data.Proxy                     (Proxy (Proxy))
 import           Data.String.Conv               (toS)
 import           Data.Text                      (Text)
+import           GHC.Generics                   (Generic)
 import           Network.HTTP.Client            (Manager, httpNoBody,
                                                  parseUrlThrow, setQueryString)
 import           Servant
 import           Servant.API.ContentTypes       (AllCTRender (handleAcceptH))
 
-type SnsWebhookApi a =
-  ReqBody '[Blank] (Message a) :> Post '[Blank] ()
+type SnsWebhookApi =
+  ReqBody '[Blank] Message :> Post '[Blank] ()
 
 type MonadSNSWebhook m r e =
   ( HasType Manager r
@@ -47,20 +54,65 @@ type MonadSNSWebhook m r e =
   , HasDownloadSNSCertificate m
   )
 
+data WebhookEnv = WebhookEnv
+  { certStore       :: CertificateStore
+  , certCache       :: CertificateCache
+  , validationCache :: ValidationCache
+  , manager         :: Manager
+  } deriving Generic
+
+data WebhookError
+  = WebhookServantError ServantErr
+  | WebhookVerificationError VerificationError
+  deriving (Show, Generic)
+
 webhookServer
-  :: (Show a, MonadSNSWebhook m r e)
-  => (a -> m ())
-  -> ServerT (SnsWebhookApi a) m
-webhookServer onMessage msg = do
+  :: CertificateCache
+  -> CertificateStore
+  -> ValidationCache
+  -> Manager
+  -> (Notification -> Handler ())
+  -> Message
+  -> Handler ()
+webhookServer certCache certStore validationCache manager onNotification =
+  hoistServer
+    (Proxy @SnsWebhookApi)
+    (runWebhookServer WebhookEnv{certStore,validationCache,manager,certCache})
+    (webhookServerT (either (throwing _Typed) pure <=< liftIO . runHandler . onNotification))
+
+type WebhookHandler = LoggingT (ReaderT WebhookEnv (ExceptT WebhookError Handler))
+
+instance HasDownloadSNSCertificate WebhookHandler where
+  downloadSNSCertificate = downloadSNSCertificateWithCache
+
+runWebhookServer :: WebhookEnv -> WebhookHandler a -> Handler a
+runWebhookServer env hdlr = do
+  eRet <- runExceptT $ runReaderT (runStderrLoggingT hdlr) env
+  case eRet of
+    Left e@(WebhookServantError err) -> logE e >> throwError err
+    Left e@(WebhookVerificationError NoCertificates) -> logE e >> throwError badConfig
+    Left e@(WebhookVerificationError (InvalidCertificate _ _)) -> logE e >> throwError err403
+    Left e@(WebhookVerificationError InvalidSigningCertUrl) -> logE e >> throwError err403
+    Left e@(WebhookVerificationError (CertificateDowloadError _)) -> logE e >> throwError err504
+    Right a -> pure a
+  where
+  badConfig = err500 { errBody = "Bad configuration" }
+  logE = liftIO . print
+
+webhookServerT
+  :: MonadSNSWebhook m r e
+  => (Notification -> m ())
+  -> Message -> m ()
+webhookServerT onNotification msg = do
   throwIfUnverifiable msg
   case msg of
 
     MsgSubscriptionConfirmation _ Confirmation{topicArn,token,subscribeURL} -> do
-      logDebugN $ "Received SubscriptionConfirmation  to " <> topicArn
+      logDebugN $ "Received SubscriptionConfirmation to " <> topicArn
       confirmSubscription subscribeURL token topicArn
       logInfoN $ "Confirmed subscription to " <> topicArn
 
-    MsgNotification _ Notification{message} -> onMessage message
+    MsgNotification _ notification -> onNotification notification
 
     MsgUnsubscribeConfirmation _ Confirmation{topicArn} ->
       logInfoN $ "Received UnsubscribeConfirmation to " <> topicArn
@@ -68,7 +120,7 @@ webhookServer onMessage msg = do
 {-# INLINEABLE webhookServer #-}
 
 throwIfUnverifiable
-  :: (Show a, MonadSNSWebhook m r e) => Message a -> m ()
+  :: MonadSNSWebhook m r e => Message -> m ()
 throwIfUnverifiable msg = do
   verification <- verifyMessage msg
   case verification of

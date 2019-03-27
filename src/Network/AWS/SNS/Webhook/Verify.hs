@@ -72,7 +72,7 @@ import           UnliftIO.Concurrent           (threadDelay)
 
 data VerificationError
   = NoCertificates
-  | InvalidCertificate [FailedReason]
+  | InvalidCertificate [FailedReason] CertificateChain
   | CertificateDowloadError SomeException
   | InvalidSigningCertUrl
   deriving (Show, Generic, Exception)
@@ -99,7 +99,7 @@ verifyMessage
   :: ( MonadVerify m r e
      , HasDownloadSNSCertificate m
      )
-  => Message a
+  => Message
   -> m SignatureVerification
 verifyMessage message = do
   cert <- downloadSNSCertificate (message ^. messageSigningCertURL)
@@ -122,12 +122,12 @@ parseAndVerifySNSCertificate s = do
   errors <- liftIO $ validateDefault store cache ("sns.amazonaws.com","") chain
   case errors of
     [] -> pure cert
-    _  -> throwing _Typed $ InvalidCertificate errors
+    _  -> throwing _Typed $ InvalidCertificate errors chain
 
 
 -- | Verifies the signature of a 'Message' using a given 'Certificate'. It is
 -- the responsibility of the caller to verify the 'Certificate' is valid
-verifyMessageWithCert :: Certificate -> Message a -> SignatureVerification
+verifyMessageWithCert :: Certificate -> Message -> SignatureVerification
 verifyMessageWithCert cert msg = verify (msg^.messageSignedText) (msg^.messageSignature)
   where
   pubKey = certPubKey cert
@@ -147,6 +147,11 @@ downloadSNSCertificateDefault
   => SigningCertUrl
   -> m Certificate
 downloadSNSCertificateDefault (SigningCertUrl url) = do
+  --FIXME: Only download certificates hosted under *.amazonaws.com to prevent
+  -- a malicious agent from requesting us to download certificates from
+  -- somewhere else.
+  -- Although the certificate is verified against the root CA certificates we
+  -- still incur in network traffic
   req <- maybe (throwing _Typed InvalidSigningCertUrl) pure (parseUrlThrow (toS url))
   mgr <- view typed
   resp <- liftIO (httpLbs req mgr) `catch` (throwing _Typed . CertificateDowloadError)

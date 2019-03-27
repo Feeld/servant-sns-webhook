@@ -1,10 +1,13 @@
 module Network.AWS.SNS.Webhook (
   MonadSNSWebhook
 , SnsWebhookApi
-, webhookServer
 , HasDownloadSNSCertificate (..)
 , VerificationError (..)
 , CertificateCache
+, Notification (..)
+
+, webhookServer
+, webhookServerT
 
 , downloadSNSCertificateDefault
 , downloadSNSCertificateWithCache
@@ -20,4 +23,5 @@ module Network.AWS.SNS.Webhook (
 ) where
 
 import           Network.AWS.SNS.Webhook.Server
+import           Network.AWS.SNS.Webhook.Types
 import           Network.AWS.SNS.Webhook.Verify
