@@ -12,7 +12,6 @@
 module Network.AWS.SNS.Webhook.Server (
   MonadSNSWebhook
 , SnsWebhookApi
-, Blank
 , webhookServer
 ) where
 
@@ -20,22 +19,22 @@ import           Network.AWS.SNS.Webhook.Types
 import           Network.AWS.SNS.Webhook.Verify
 
 import           Control.Lens
-import           Control.Monad                 (void)
-import           Control.Monad.Error.Lens      (throwing)
-import           Control.Monad.IO.Class        (MonadIO (liftIO))
-import           Control.Monad.Logger          (MonadLogger, logDebugN, logErrorN,
-                                                logInfoN)
-import           Data.Aeson                    (FromJSON)
-import           Data.Generics.Product         as X (HasType (..))
-import           Data.Generics.Sum.Typed       (AsType (..))
-import           Data.Monoid                   ((<>))
-import           Data.Proxy                    (Proxy (Proxy))
-import           Data.String.Conv              (toS)
-import           Data.Text                     (Text)
-import           Network.HTTP.Client           (Manager, httpNoBody,
-                                                parseUrlThrow, setQueryString)
+import           Control.Monad                  (void)
+import           Control.Monad.Error.Lens       (throwing)
+import           Control.Monad.IO.Class         (MonadIO (liftIO))
+import           Control.Monad.Logger           (MonadLogger, logDebugN,
+                                                 logErrorN, logInfoN)
+import           Data.Aeson                     (FromJSON)
+import           Data.Generics.Product          as X (HasType (..))
+import           Data.Generics.Sum.Typed        (AsType (..))
+import           Data.Monoid                    ((<>))
+import           Data.Proxy                     (Proxy (Proxy))
+import           Data.String.Conv               (toS)
+import           Data.Text                      (Text)
+import           Network.HTTP.Client            (Manager, httpNoBody,
+                                                 parseUrlThrow, setQueryString)
 import           Servant
-import           Servant.API.ContentTypes      (AllCTRender (handleAcceptH))
+import           Servant.API.ContentTypes       (AllCTRender (handleAcceptH))
 
 type SnsWebhookApi a =
   ReqBody '[Blank] (Message a) :> Post '[Blank] ()

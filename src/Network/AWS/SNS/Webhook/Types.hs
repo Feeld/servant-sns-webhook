@@ -6,7 +6,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE TypeApplications           #-}
 module Network.AWS.SNS.Webhook.Types (
   Message(..)
 , Confirmation(..)

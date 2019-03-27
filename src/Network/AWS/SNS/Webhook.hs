@@ -6,7 +6,6 @@ module Network.AWS.SNS.Webhook (
 , VerificationError (..)
 , CertificateCache
 
--- * Utilities to implement 'downloadSNSCertificate' and default implementations
 , downloadSNSCertificateDefault
 , downloadSNSCertificateWithCache
 , withCertCache
@@ -21,4 +20,4 @@ module Network.AWS.SNS.Webhook (
 ) where
 
 import           Network.AWS.SNS.Webhook.Server
-import Network.AWS.SNS.Webhook.Verify
+import           Network.AWS.SNS.Webhook.Verify
