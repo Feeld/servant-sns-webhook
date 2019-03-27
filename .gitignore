@@ -2,6 +2,5 @@
 .ghc.environment.*
 dist
 dist-newstyle/
-*.cabal
 cabal.project.local
 result
