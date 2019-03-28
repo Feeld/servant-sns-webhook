@@ -81,16 +81,20 @@ data WebhookError
 webhookServer
   :: CertificateStore
   -> CertificateCache
-  -> ValidationCache
   -> Manager
   -> (Notification -> Handler ())
   -> Message
   -> Handler ()
-webhookServer certStore certCache validationCache manager onNotification =
+webhookServer certStore certCache manager onNotification =
   hoistServer
     (Proxy @SnsWebhookApi)
     (runWebhookServer WebhookEnv{certStore,validationCache,manager,certCache})
     (webhookServerT (either (throwing _Typed) pure <=< liftIO . runHandler . onNotification))
+  where
+  -- We don't need a functioning validationCache because the
+  -- 'HasDownloadSNSCertificate WebhookHandler' instance caches the certificate
+  -- once successfully verified.
+  validationCache = exceptionValidationCache []
 
 type WebhookHandler = LoggingT (ReaderT WebhookEnv (ExceptT WebhookError Handler))
 
