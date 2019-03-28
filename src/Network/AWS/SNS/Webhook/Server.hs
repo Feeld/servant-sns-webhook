@@ -16,35 +16,46 @@ module Network.AWS.SNS.Webhook.Server (
 , SnsWebhookApi
 , webhookServerT
 , webhookServer
+, confirmSubscription
 ) where
 
 import           Network.AWS.SNS.Webhook.Types
 import           Network.AWS.SNS.Webhook.Verify
 
-import           Control.Lens
+import           Control.Exception.Safe         (SomeException, catch)
+import           Control.Lens                   (view, (<&>))
 import           Control.Monad                  (void, (<=<))
+import           Control.Monad.Catch            (MonadCatch)
 import           Control.Monad.Error.Lens       (throwing)
-import           Control.Monad.Except           (ExceptT, runExceptT)
+import           Control.Monad.Except           (ExceptT,
+                                                 MonadError (throwError),
+                                                 runExceptT)
 import           Control.Monad.IO.Class         (MonadIO (liftIO))
 import           Control.Monad.Logger           (LoggingT, MonadLogger,
                                                  logDebugN, logErrorN, logInfoN,
                                                  runStderrLoggingT)
-import           Control.Monad.Reader           (ReaderT (..))
+import           Control.Monad.Reader           (MonadReader,
+                                                 ReaderT (runReaderT))
 import           Data.Aeson                     (FromJSON)
-import           Data.Generics.Product          as X (HasType (..))
-import           Data.Generics.Sum.Typed        (AsType (..))
-import           Data.Monoid                    ((<>))
+import           Data.Generics.Product          (HasType (typed))
+import           Data.Generics.Sum.Typed        (AsType (_Typed))
 import           Data.Proxy                     (Proxy (Proxy))
 import           Data.String.Conv               (toS)
 import           Data.Text                      (Text)
 import           GHC.Generics                   (Generic)
 import           Network.HTTP.Client            (Manager, httpNoBody,
-                                                 parseUrlThrow, setQueryString)
-import           Servant
+                                                 requestFromURI, setQueryString)
+import           Servant                        ((:>), Accept (..), Handler,
+                                                 JSON, MimeUnrender (..),
+                                                 PostNoContent, ReqBody,
+                                                 ServantErr (errBody), err400,
+                                                 err403, err500, err504,
+                                                 hoistServer, runHandler)
 import           Servant.API.ContentTypes       (AllCTRender (handleAcceptH))
+import           System.IO                      (hPrint, stderr)
 
 type SnsWebhookApi =
-  ReqBody '[Blank] Message :> Post '[Blank] ()
+  ReqBody '[Blank] Message :> PostNoContent '[Blank] ()
 
 type MonadSNSWebhook m r e =
   ( HasType Manager r
@@ -52,6 +63,7 @@ type MonadSNSWebhook m r e =
   , AsType ServantErr e
   , MonadLogger m
   , HasDownloadSNSCertificate m
+  , MonadCatch m
   )
 
 data WebhookEnv = WebhookEnv
@@ -97,7 +109,7 @@ runWebhookServer env hdlr = do
     Right a -> pure a
   where
   badConfig = err500 { errBody = "Bad configuration" }
-  logE = liftIO . print
+  logE = liftIO . hPrint stderr
 
 webhookServerT
   :: MonadSNSWebhook m r e
@@ -132,10 +144,16 @@ throwIfUnverifiable msg = do
       throwing _Typed err403
 
 confirmSubscription
-  :: MonadSNSWebhook m r e
-  => Text -> Text -> Text -> m ()
-confirmSubscription subscribeUrl token topicArn = do
-  let mReq = parseUrlThrow (toS subscribeUrl)
+  :: ( MonadError e m
+     , AsType ServantErr e
+     , MonadReader r m
+     , HasType Manager r
+     , MonadIO m
+     , MonadCatch m
+     )
+  => Url -> Text -> Text -> m ()
+confirmSubscription (Url subscribeUrl) token topicArn = do
+  let mReq = requestFromURI subscribeUrl
          <&> setQueryString
              [ ("Action",   Just "ConfirmSubscription")
              , ("Token",    Just (toS token))
@@ -145,7 +163,8 @@ confirmSubscription subscribeUrl token topicArn = do
     Nothing -> throwing _Typed err400 { errBody = "Invalid subscribeURL" }
     Just req -> do
       manager <- view typed
-      void $ liftIO $ httpNoBody req manager
+      liftIO (void $ httpNoBody req manager)
+        `catch` (\(_::SomeException) -> throwing _Typed err504)
 
 -- We need this because AWS sends blank Accept and Content-Type headers
 data Blank

@@ -13,7 +13,7 @@ module Network.AWS.SNS.Webhook.Types (
 , Confirmation(..)
 , Notification(..)
 
-, SigningCertUrl (..)
+, Url (..)
 , SignedText (..)
 , Signature (..)
 , messageSigningCertURL
@@ -22,8 +22,14 @@ module Network.AWS.SNS.Webhook.Types (
 , notificationJSON
 ) where
 
-import           Control.Lens
-import           Data.Aeson
+import           Control.Lens                 (Lens', Traversal', lens)
+import           Data.Aeson                   (FromJSON (..), Object,
+                                               Options (fieldLabelModifier),
+                                               ToJSON (..),
+                                               Value (Object, String),
+                                               defaultOptions, genericParseJSON,
+                                               genericToJSON, withObject,
+                                               withText, (.:))
 import           Data.Aeson.Lens              (_JSON)
 import           Data.ByteString              (ByteString)
 import qualified Data.ByteString.Base64       as B64
@@ -31,13 +37,15 @@ import           Data.ByteString.Builder      (byteString, shortByteString,
                                                toLazyByteString)
 import           Data.Char                    (toUpper)
 import           Data.Generics.Product.Fields (field)
-import           Data.Hashable                (Hashable)
+import           Data.Hashable                (Hashable (hashWithSalt))
 import qualified Data.HashMap.Strict          as HM
 import           Data.List                    (foldl')
 import           Data.String.Conv             (toS)
 import           Data.Text                    (Text)
 import           Data.Time                    (UTCTime)
 import           GHC.Generics                 (Generic)
+import           Network.URI                  (URI, parseURIReference,
+                                               uriToString)
 
 newtype SignedText = SignedText ByteString
   deriving (Eq, Show)
@@ -53,9 +61,19 @@ instance FromJSON Signature where
     either fail (pure . Signature) $ B64.decode (toS s)
 
 
-newtype SigningCertUrl = SigningCertUrl Text
+newtype Url = Url URI
   deriving stock Generic
-  deriving newtype (Eq, Show, Ord, Hashable, ToJSON, FromJSON)
+  deriving newtype (Eq, Show, Ord)
+
+instance Hashable Url where
+  hashWithSalt n (Url uri) = hashWithSalt n (uriToString id uri "")
+
+instance ToJSON Url where
+  toJSON (Url u) = toJSON $ uriToString id u ""
+
+instance FromJSON Url where
+  parseJSON = withText "Url" $
+    maybe (fail "invalid URI") (pure . Url) . parseURIReference . toS
 
 data Message
   = MsgNotification             SignedText Notification
@@ -63,7 +81,7 @@ data Message
   | MsgUnsubscribeConfirmation  SignedText Confirmation
   deriving (Eq, Show)
 
-messageSigningCertURL :: Lens' Message SigningCertUrl
+messageSigningCertURL :: Lens' Message Url
 messageSigningCertURL = lens getIt setIt
   where
   getIt (MsgNotification _ Notification{signingCertURL}) = signingCertURL
@@ -107,12 +125,12 @@ data Confirmation = Confirmation
   { messageId        :: Text
   , topicArn         :: Text
   , token            :: Text
-  , subscribeURL     :: Text
+  , subscribeURL     :: Url
   , message          :: Text
   , timestamp        :: UTCTime
   , signatureVersion :: Text
   , signature        :: Signature
-  , signingCertURL   :: SigningCertUrl
+  , signingCertURL   :: Url
   } deriving (Eq, Show, Generic)
 
 instance FromJSON Confirmation where
@@ -122,12 +140,12 @@ data Notification = Notification
   { messageId        :: Text
   , topicArn         :: Text
   , subject          :: Maybe Text
-  , unsubscribeURL   :: Text
+  , unsubscribeURL   :: Url
   , message          :: Text
   , timestamp        :: UTCTime
   , signatureVersion :: Text
   , signature        :: Signature
-  , signingCertURL   :: SigningCertUrl
+  , signingCertURL   :: Url
   } deriving (Eq, Show, Generic)
 
 
@@ -168,7 +186,7 @@ injectType type_ (Object o) =
 injectType _ other = other
 
 notificationSignedText :: Object -> SignedText
-notificationSignedText = signedTextParser
+notificationSignedText = getSignedText
   [ "Message"
   , "MessageId"
   , "Subject"
@@ -179,7 +197,7 @@ notificationSignedText = signedTextParser
   ]
 
 confirmationSignedText :: Object -> SignedText
-confirmationSignedText = signedTextParser
+confirmationSignedText = getSignedText
   [ "Message"
   , "MessageId"
   , "Subject"
@@ -190,8 +208,8 @@ confirmationSignedText = signedTextParser
   , "Type"
   ]
 
-signedTextParser :: [ByteString] -> Object -> SignedText
-signedTextParser keys o = SignedText . toS . toLazyByteString $ foldl' go mempty keys
+getSignedText :: [ByteString] -> Object -> SignedText
+getSignedText keys o = SignedText . toS . toLazyByteString $ foldl' go mempty keys
   where
   go !acc k = (acc <>) $ maybe mempty (kvLine k) (toS k `HM.lookup` o)
   kvLine k (String v) =

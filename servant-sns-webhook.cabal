@@ -46,16 +46,17 @@ library
     monad-logger >=0.3 && <0.4,
     servant-server >=0.15 && <0.16,
     servant >=0.15 && <0.16,
-    file-embed >=0 && <1
+    file-embed >=0 && <1,
+    network-uri >=2.6 && <2.7
   hs-source-dirs:      src
   ghc-options: -Wall -fwarn-redundant-constraints
   default-language:    Haskell2010
 
-executable servant-sns-webhook-example
+executable sns-webhook
   main-is: Main.hs
   hs-source-dirs:
       example
-  ghc-options: -Wall -Wall -threaded
+  ghc-options: -Wall
   build-depends:
     base,
     warp,

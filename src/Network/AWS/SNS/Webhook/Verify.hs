@@ -29,18 +29,18 @@ module Network.AWS.SNS.Webhook.Verify (
 
 
 import           Network.AWS.SNS.Webhook.Types (Message, Signature (..),
-                                                SignedText (..),
-                                                SigningCertUrl (..),
+                                                SignedText (..), Url (..),
                                                 messageSignature,
                                                 messageSignedText,
                                                 messageSigningCertURL)
 
 
-import           Control.Exception.Safe
-import           Control.Lens
+import           Control.Exception.Safe        (Exception, SomeException,
+                                                bracket, catch)
+import           Control.Lens                  (view, (^.))
 import           Control.Monad                 (forever)
-import           Control.Monad.Catch           (MonadCatch)
-import           Control.Monad.Error.Lens
+import           Control.Monad.Catch           (MonadCatch, MonadMask)
+import           Control.Monad.Error.Lens (throwing)
 import           Control.Monad.Except          (MonadError)
 import           Control.Monad.IO.Class        (MonadIO (liftIO))
 import           Control.Monad.Reader          (MonadReader)
@@ -68,8 +68,8 @@ import           Data.X509.Validation          (FailedReason (..),
                                                 validateDefault,
                                                 verifySignature)
 import           GHC.Generics                  (Generic)
-import           Network.HTTP.Client           (Manager, httpLbs, parseUrlThrow,
-                                                responseBody)
+import           Network.HTTP.Client           (Manager, httpLbs,
+                                                requestFromURI, responseBody)
 import           UnliftIO.Async                (async, cancel)
 import           UnliftIO.Concurrent           (threadDelay)
 
@@ -94,11 +94,11 @@ class HasDownloadSNSCertificate m where
   -- | Download a 'Certificate' from the 'SigningCertUrl'.
   --
   -- Implementations *must* validate the certificate and may cache it (keyed on
-  -- 'SigningCertUrl') to avoid repeated network access and verification
-  downloadSNSCertificate :: SigningCertUrl -> m Certificate
+  -- 'Url') to avoid repeated network access and verification
+  downloadSNSCertificate :: Url -> m Certificate
 
 -- | Verifies the signature of a 'Message' using the 'HasDownloadSNSCertificate'
--- implemenatition to produce a verified certificate from the SigningCertUrl
+-- implemenatition to produce a verified certificate from the Url
 verifyMessage
   :: ( MonadVerify m r e
      , HasDownloadSNSCertificate m
@@ -120,7 +120,7 @@ parseAndVerifySNSCertificate
 parseAndVerifySNSCertificate s = do
   (cert, chain) <- case readSignedObjectFromMemory s of
     []              -> throwing _Typed NoCertificates
-    certs@(scert:_) -> pure $ (getCertificate scert, CertificateChain certs)
+    certs@(scert:_) -> pure (getCertificate scert, CertificateChain certs)
   store <- view typed
   cache <- view typed
   errors <- liftIO $ validateDefault store cache ("sns.amazonaws.com","") chain
@@ -148,15 +148,15 @@ downloadSNSCertificateDefault
      , MonadVerify m r e
      , HasType Manager r
      )
-  => SigningCertUrl
+  => Url
   -> m Certificate
-downloadSNSCertificateDefault (SigningCertUrl url) = do
+downloadSNSCertificateDefault (Url url) = do
   --FIXME: Only download certificates hosted under *.amazonaws.com to prevent
   -- a malicious agent from requesting us to download certificates from
   -- somewhere else.
   -- Although the certificate is verified against the root CA certificates we
   -- still incur in network traffic
-  req <- maybe (throwing _Typed InvalidSigningCertUrl) pure (parseUrlThrow (toS url))
+  req <- maybe (throwing _Typed InvalidSigningCertUrl) pure (requestFromURI url)
   mgr <- view typed
   resp <- liftIO (httpLbs req mgr) `catch` (throwing _Typed . CertificateDowloadError)
   parseAndVerifySNSCertificate (toS $ responseBody resp)
@@ -172,7 +172,7 @@ downloadSNSCertificateDefault (SigningCertUrl url) = do
 --    * We can store a parsed and verified certificate instead of the serialized
 --      certificate and avoid deserializing it whenever we bring it from external
 --      storage
-type CertificateCache = Cache.Cache SigningCertUrl Certificate
+type CertificateCache = Cache.Cache Url Certificate
 
 -- | Downloads and verifies a 'Certificate' and memoizes the result in a
 -- 'CertificateCache'.
@@ -182,7 +182,7 @@ downloadSNSCertificateWithCache
      , HasType Manager r
      , HasType CertificateCache r
      )
-  => SigningCertUrl
+  => Url
   -> m Certificate
 downloadSNSCertificateWithCache surl = do
   cache <- view typed
