@@ -1,28 +1,31 @@
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns        #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE DuplicateRecordFields     #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE NamedFieldPuns            #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeOperators             #-}
 
 module Main (main) where
 
 import           Network.AWS.SNS.Webhook
 
-import           Control.Monad.IO.Class               (liftIO)
-import           Data.Aeson                           (encode)
-import           Data.Text                            (Text)
-import qualified Data.ByteString.Lazy.Char8           as LBS
-import           Network.HTTP.Client.TLS              (newTlsManager)
-import           Network.Wai.Handler.Warp             (run)
-import           Servant                              (Proxy (..), serve)
-import           System.Environment                   (lookupEnv)
-import           System.IO                            (hPutStrLn, stderr)
+import           Control.Monad.IO.Class     (liftIO)
+import           Data.Aeson                 (Value, encode)
+import qualified Data.ByteString.Lazy.Char8 as LBS
+import           Data.Maybe                 (isJust)
+import           Data.Text                  (Text)
+import           Network.HTTP.Client.TLS    (newTlsManager)
+import           Network.Wai.Handler.Warp   (run)
+import           Servant                    (Proxy (..), serve)
+import           System.Environment         (lookupEnv)
+import           System.IO                  (hPutStrLn, stderr)
+
 
 main :: IO ()
 main = withCertCache 300 $ \certCache -> do
@@ -39,5 +42,12 @@ main = withCertCache 300 $ \certCache -> do
   let mkServer = webhookServer certStore certCache manager
 
   hPutStrLn stderr $ "Running webhook at port " <> show port
-  run port $ serve (Proxy @(SnsWebhookApi Text)) $ mkServer $ \notification ->
-    liftIO $ LBS.putStrLn (encode notification)
+
+  doShowJsonMessage <- isJust <$> lookupEnv "SHOW_JSON_MESSAGE"
+  if doShowJsonMessage
+    then
+      run port $ serve (Proxy @(SnsWebhookApi (Embedded Value))) $ mkServer $ \Notification{message} ->
+        liftIO $ LBS.putStrLn $ encode $ unEmbedded message
+    else
+      run port $ serve (Proxy @(SnsWebhookApi Text)) $ mkServer $ \notification ->
+        liftIO $ LBS.putStrLn $ encode notification
