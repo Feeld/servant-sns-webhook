@@ -40,7 +40,7 @@ import           Control.Exception.Safe        (Exception, SomeException,
 import           Control.Lens                  (view, (^.))
 import           Control.Monad                 (forever)
 import           Control.Monad.Catch           (MonadCatch, MonadMask)
-import           Control.Monad.Error.Lens (throwing)
+import           Control.Monad.Error.Lens      (throwing)
 import           Control.Monad.Except          (MonadError)
 import           Control.Monad.IO.Class        (MonadIO (liftIO))
 import           Control.Monad.Reader          (MonadReader)
@@ -51,6 +51,7 @@ import           Data.FileEmbed                (embedFile)
 import           Data.Generics.Product         as X (HasType (..))
 import           Data.Generics.Sum             as X (AsType (..))
 import           Data.String.Conv              (toS)
+import qualified Data.Text                     as T
 import           Data.Time                     (NominalDiffTime)
 import           Data.X509                     (Certificate (certPubKey),
                                                 CertificateChain (..),
@@ -70,6 +71,7 @@ import           Data.X509.Validation          (FailedReason (..),
 import           GHC.Generics                  (Generic)
 import           Network.HTTP.Client           (Manager, httpLbs,
                                                 requestFromURI, responseBody)
+import           Network.URI                   (uriAuthority, uriRegName)
 import           UnliftIO.Async                (async, cancel)
 import           UnliftIO.Concurrent           (threadDelay)
 
@@ -148,18 +150,17 @@ downloadSNSCertificateDefault
      , MonadVerify m r e
      , HasType Manager r
      )
-  => Url
+  => [T.Text]
+  -> Url
   -> m Certificate
-downloadSNSCertificateDefault (Url url) = do
-  --FIXME: Only download certificates hosted under *.amazonaws.com to prevent
-  -- a malicious agent from requesting us to download certificates from
-  -- somewhere else.
-  -- Although the certificate is verified against the root CA certificates we
-  -- still incur in network traffic
+downloadSNSCertificateDefault allowedCertHostnameSuffixes (Url url)
+  | Just auth <- uriAuthority url
+  , any (`T.isSuffixOf` T.pack (uriRegName auth)) allowedCertHostnameSuffixes = do
   req <- maybe (throwing _Typed InvalidSigningCertUrl) pure (requestFromURI url)
   mgr <- view typed
   resp <- liftIO (httpLbs req mgr) `catch` (throwing _Typed . CertificateDowloadError)
   parseAndVerifySNSCertificate (toS $ responseBody resp)
+downloadSNSCertificateDefault _ _ = throwing _Typed InvalidSigningCertUrl
 
 
 --  | An in-memory cache for verified certificates.
@@ -182,9 +183,10 @@ downloadSNSCertificateWithCache
      , HasType Manager r
      , HasType CertificateCache r
      )
-  => Url
+  => [T.Text]
+  -> Url
   -> m Certificate
-downloadSNSCertificateWithCache surl = do
+downloadSNSCertificateWithCache allowedCertHostnameSuffixes surl = do
   cache <- view typed
   -- We use lookup' to avoid purging the element if it has been expired. If it
   -- has, a Nothing will be returned so it will get overwritten with a fresh
@@ -193,7 +195,7 @@ downloadSNSCertificateWithCache surl = do
   case mCert of
     Just cert -> pure cert
     Nothing -> do
-      cert <- downloadSNSCertificateDefault surl
+      cert <- downloadSNSCertificateDefault allowedCertHostnameSuffixes surl
       liftIO (Cache.insert cache surl cert)
       pure cert
 

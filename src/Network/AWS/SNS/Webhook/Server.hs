@@ -99,7 +99,10 @@ webhookServer certStore certCache manager onNotification =
 type WebhookHandler = LoggingT (ReaderT WebhookEnv (ExceptT WebhookError Handler))
 
 instance HasDownloadSNSCertificate WebhookHandler where
-  downloadSNSCertificate = downloadSNSCertificateWithCache
+  -- The implementation of 'downloadSNSCertificateWithCache' for the Handler
+  -- monad that 'webhookServer' uses only downloads certificates from domains
+  -- which belong to amazonaws and caches them
+  downloadSNSCertificate = downloadSNSCertificateWithCache [".amazonaws.com"]
 
 runWebhookServer :: WebhookEnv -> WebhookHandler a -> Handler a
 runWebhookServer env hdlr = do
