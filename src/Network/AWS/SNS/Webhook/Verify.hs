@@ -105,7 +105,7 @@ verifyMessage
   :: ( MonadVerify m r e
      , HasDownloadSNSCertificate m
      )
-  => Message
+  => Message a
   -> m SignatureVerification
 verifyMessage message = do
   cert <- downloadSNSCertificate (message ^. messageSigningCertURL)
@@ -133,7 +133,7 @@ parseAndVerifySNSCertificate s = do
 
 -- | Verifies the signature of a 'Message' using a given 'Certificate'. It is
 -- the responsibility of the caller to verify the 'Certificate' is valid
-verifyMessageWithCert :: Certificate -> Message -> SignatureVerification
+verifyMessageWithCert :: Certificate -> Message a -> SignatureVerification
 verifyMessageWithCert cert msg = verify (msg^.messageSignedText) (msg^.messageSignature)
   where
   pubKey = certPubKey cert

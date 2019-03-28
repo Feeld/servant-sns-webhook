@@ -16,6 +16,7 @@ import           Network.AWS.SNS.Webhook
 
 import           Control.Monad.IO.Class               (liftIO)
 import           Data.Aeson                           (encode)
+import           Data.Text                            (Text)
 import qualified Data.ByteString.Lazy.Char8           as LBS
 import           Network.HTTP.Client.TLS              (newTlsManager)
 import           Network.Wai.Handler.Warp             (run)
@@ -38,5 +39,5 @@ main = withCertCache 300 $ \certCache -> do
   let mkServer = webhookServer certStore certCache manager
 
   hPutStrLn stderr $ "Running webhook at port " <> show port
-  run port $ serve (Proxy @SnsWebhookApi) $ mkServer $ \notification ->
+  run port $ serve (Proxy @(SnsWebhookApi Text)) $ mkServer $ \notification ->
     liftIO $ LBS.putStrLn (encode notification)

@@ -1,13 +1,11 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DuplicateRecordFields      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE TypeApplications           #-}
 module Network.AWS.SNS.Webhook.Types (
   Message(..)
 , Confirmation(..)
@@ -16,36 +14,34 @@ module Network.AWS.SNS.Webhook.Types (
 , Url (..)
 , SignedText (..)
 , Signature (..)
+, Embedded (..)
 , messageSigningCertURL
 , messageSignature
 , messageSignedText
-, notificationJSON
+, embedded
 ) where
 
-import           Control.Lens                 (Lens', Traversal', lens)
-import           Data.Aeson                   (FromJSON (..), Object,
-                                               Options (fieldLabelModifier),
-                                               ToJSON (..),
-                                               Value (Object, String),
-                                               defaultOptions, genericParseJSON,
-                                               genericToJSON, withObject,
-                                               withText, (.:))
-import           Data.Aeson.Lens              (_JSON)
-import           Data.ByteString              (ByteString)
-import qualified Data.ByteString.Base64       as B64
-import           Data.ByteString.Builder      (byteString, shortByteString,
-                                               toLazyByteString)
-import           Data.Char                    (toUpper)
-import           Data.Generics.Product.Fields (field)
-import           Data.Hashable                (Hashable (hashWithSalt))
-import qualified Data.HashMap.Strict          as HM
-import           Data.List                    (foldl')
-import           Data.String.Conv             (toS)
-import           Data.Text                    (Text)
-import           Data.Time                    (UTCTime)
-import           GHC.Generics                 (Generic)
-import           Network.URI                  (URI, parseURIReference,
-                                               uriToString)
+import           Control.Lens            (Iso', Lens', iso, lens)
+import           Data.Aeson              (FromJSON (..), Object,
+                                          Options (fieldLabelModifier),
+                                          ToJSON (..), Value (Object, String),
+                                          defaultOptions, eitherDecodeStrict,
+                                          encode, genericParseJSON,
+                                          genericToJSON, withObject, withText,
+                                          (.:))
+import           Data.ByteString         (ByteString)
+import qualified Data.ByteString.Base64  as B64
+import           Data.ByteString.Builder (byteString, shortByteString,
+                                          toLazyByteString)
+import           Data.Char               (toUpper)
+import           Data.Hashable           (Hashable (hashWithSalt))
+import qualified Data.HashMap.Strict     as HM
+import           Data.List               (foldl')
+import           Data.String.Conv        (toS)
+import           Data.Text               (Text)
+import           Data.Time               (UTCTime)
+import           GHC.Generics            (Generic)
+import           Network.URI             (URI, parseURIReference, uriToString)
 
 newtype SignedText = SignedText ByteString
   deriving (Eq, Show)
@@ -75,13 +71,13 @@ instance FromJSON Url where
   parseJSON = withText "Url" $
     maybe (fail "invalid URI") (pure . Url) . parseURIReference . toS
 
-data Message
-  = MsgNotification             SignedText Notification
+data Message a
+  = MsgNotification             SignedText (Notification a)
   | MsgSubscriptionConfirmation SignedText Confirmation
   | MsgUnsubscribeConfirmation  SignedText Confirmation
   deriving (Eq, Show)
 
-messageSigningCertURL :: Lens' Message Url
+messageSigningCertURL :: Lens' (Message a) Url
 messageSigningCertURL = lens getIt setIt
   where
   getIt (MsgNotification _ Notification{signingCertURL}) = signingCertURL
@@ -93,7 +89,7 @@ messageSigningCertURL = lens getIt setIt
   setIt (MsgUnsubscribeConfirmation st conf)  v = MsgUnsubscribeConfirmation st conf { signingCertURL = v }
 {-# INLINE messageSigningCertURL #-}
 
-messageSignature :: Lens' Message Signature
+messageSignature :: Lens' (Message a) Signature
 messageSignature = lens getIt setIt
   where
   getIt (MsgNotification _ Notification{signature})             = signature
@@ -105,7 +101,7 @@ messageSignature = lens getIt setIt
   setIt (MsgUnsubscribeConfirmation st conf)  v = MsgUnsubscribeConfirmation st conf { signature = v }
 {-# INLINE messageSignature #-}
 
-messageSignedText :: Lens' Message SignedText
+messageSignedText :: Lens' (Message a) SignedText
 messageSignedText = lens getIt setIt
   where
   getIt (MsgNotification st _)             = st
@@ -117,9 +113,6 @@ messageSignedText = lens getIt setIt
   setIt (MsgUnsubscribeConfirmation _ conf)  st = MsgUnsubscribeConfirmation st conf
 {-# INLINE messageSignedText #-}
 
-notificationJSON :: (FromJSON a, ToJSON a) => Traversal' Notification a
-notificationJSON = field @"message" . _JSON
-{-# INLINE notificationJSON #-}
 
 data Confirmation = Confirmation
   { messageId        :: Text
@@ -136,12 +129,12 @@ data Confirmation = Confirmation
 instance FromJSON Confirmation where
   parseJSON = genericParseJSON jsonOpts
 
-data Notification = Notification
+data Notification a = Notification
   { messageId        :: Text
   , topicArn         :: Text
   , subject          :: Maybe Text
   , unsubscribeURL   :: Url
-  , message          :: Text
+  , message          :: a
   , timestamp        :: UTCTime
   , signatureVersion :: Text
   , signature        :: Signature
@@ -149,14 +142,14 @@ data Notification = Notification
   } deriving (Eq, Show, Generic)
 
 
-instance FromJSON Notification where
+instance FromJSON a => FromJSON (Notification a) where
   parseJSON = genericParseJSON jsonOpts
 
-instance ToJSON Notification where
+instance ToJSON a => ToJSON (Notification a) where
   toJSON = injectType "Notification"
          . genericToJSON jsonOpts
 
-instance FromJSON Message where
+instance FromJSON a => FromJSON (Message a) where
   parseJSON = withObject "SNS Message" $ \o -> do
     type_ <- o .: "Type"
     case type_ :: Text of
@@ -173,6 +166,22 @@ instance FromJSON Message where
           <$> pure (confirmationSignedText o)
           <*> parseJSON (Object o)
       _ -> fail "Unknown Type"
+
+newtype Embedded a = Embedded { unEmbedded :: a }
+  deriving stock (Show, Generic)
+  deriving newtype Eq
+
+instance FromJSON a => FromJSON (Embedded a) where
+  parseJSON =
+    withText "Embedded"
+      (fmap Embedded . either fail pure . eitherDecodeStrict . toS)
+
+instance ToJSON a => ToJSON (Embedded a) where
+  toJSON = String . toS . Data.Aeson.encode . unEmbedded
+
+embedded :: Iso' (Embedded a) a
+embedded = iso unEmbedded Embedded
+{-# INLINE embedded #-}
 
 jsonOpts :: Options
 jsonOpts = defaultOptions { fieldLabelModifier = capitalize }

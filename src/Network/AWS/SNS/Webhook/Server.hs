@@ -54,8 +54,8 @@ import           Servant                        ((:>), Accept (..), Handler,
 import           Servant.API.ContentTypes       (AllCTRender (handleAcceptH))
 import           System.IO                      (hPrint, stderr)
 
-type SnsWebhookApi =
-  ReqBody '[Blank] Message :> PostNoContent '[Blank] ()
+type SnsWebhookApi a =
+  ReqBody '[Blank] (Message a) :> PostNoContent '[Blank] ()
 
 type MonadSNSWebhook m r e =
   ( HasType Manager r
@@ -79,15 +79,19 @@ data WebhookError
   deriving (Show, Generic)
 
 webhookServer
-  :: CertificateStore
+  :: forall a
+   . ( Show a
+     , FromJSON a
+     )
+  => CertificateStore
   -> CertificateCache
   -> Manager
-  -> (Notification -> Handler ())
-  -> Message
+  -> (Notification a -> Handler ())
+  -> Message a
   -> Handler ()
 webhookServer certStore certCache manager onNotification =
   hoistServer
-    (Proxy @SnsWebhookApi)
+    (Proxy @(SnsWebhookApi a))
     (runWebhookServer WebhookEnv{certStore,validationCache,manager,certCache})
     (webhookServerT (either (throwing _Typed) pure <=< liftIO . runHandler . onNotification))
   where
@@ -119,9 +123,11 @@ runWebhookServer env hdlr = do
   logE = liftIO . hPrint stderr
 
 webhookServerT
-  :: MonadSNSWebhook m r e
-  => (Notification -> m ())
-  -> Message -> m ()
+  :: ( Show a
+     , MonadSNSWebhook m r e
+     )
+  => (Notification a -> m ())
+  -> Message a -> m ()
 webhookServerT onNotification msg = do
   throwIfUnverifiable msg
   case msg of
@@ -139,7 +145,10 @@ webhookServerT onNotification msg = do
 {-# INLINEABLE webhookServerT #-}
 
 throwIfUnverifiable
-  :: MonadSNSWebhook m r e => Message -> m ()
+  :: ( Show a
+     , MonadSNSWebhook m r e
+     )
+  => Message a -> m ()
 throwIfUnverifiable msg = do
   verification <- verifyMessage msg
   case verification of

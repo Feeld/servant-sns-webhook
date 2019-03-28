@@ -5,7 +5,8 @@ module Network.AWS.SNS.Webhook (
 , VerificationError (..)
 , CertificateCache
 , Notification (..)
-, notificationJSON
+, Embedded (..)
+, embedded
 
 , webhookServer
 , webhookServerT
