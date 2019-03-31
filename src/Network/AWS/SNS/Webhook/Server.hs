@@ -48,6 +48,7 @@ import           Network.HTTP.Client            (Manager, httpNoBody,
                                                  requestFromURI, setQueryString)
 import           Servant                        ((:>), Accept (..), Handler,
                                                  JSON, MimeUnrender (..),
+                                                 NoContent (..), PlainText,
                                                  PostNoContent, ReqBody,
                                                  ServantErr (errBody), err400,
                                                  err403, err500, err504,
@@ -56,7 +57,7 @@ import           Servant.API.ContentTypes       (AllCTRender (handleAcceptH))
 import           System.IO                      (hPrint, stderr)
 
 type SnsWebhookApi a =
-  ReqBody '[Blank] (Message a) :> PostNoContent '[Blank] ()
+  ReqBody '[Blank,JSON] (Message a) :> PostNoContent '[Blank,JSON,PlainText] NoContent
 
 type MonadSNSWebhook m r e =
   ( AsType ServantErr e
@@ -90,7 +91,7 @@ webhookServer
   -> Manager
   -> (Notification a -> Handler ())
   -> Message a
-  -> Handler ()
+  -> Handler NoContent
 webhookServer certStore certCache manager onNotification =
   hoistServer
     (Proxy @(SnsWebhookApi a))
@@ -132,7 +133,7 @@ webhookServerT
      , MonadSNSWebhook m r e
      )
   => (Notification a -> m ())
-  -> Message a -> m ()
+  -> Message a -> m NoContent
 webhookServerT onNotification msg = do
   throwIfUnverifiable msg
   case msg of
@@ -141,11 +142,13 @@ webhookServerT onNotification msg = do
       logDebugN $ "Received SubscriptionConfirmation to " <> topicArn
       confirmSubscription subscribeURL token topicArn
       logInfoN $ "Confirmed subscription to " <> topicArn
+      pure NoContent
 
-    MsgNotification _ notification -> onNotification notification
+    MsgNotification _ notification -> onNotification notification >> pure NoContent
 
-    MsgUnsubscribeConfirmation _ Confirmation{topicArn} ->
+    MsgUnsubscribeConfirmation _ Confirmation{topicArn} -> do
       logInfoN $ "Received UnsubscribeConfirmation to " <> topicArn
+      pure NoContent
 
 {-# INLINEABLE webhookServerT #-}
 
@@ -196,7 +199,7 @@ data Blank
 instance Accept Blank where
   contentType _ = "*/*"
 
-instance AllCTRender '[Blank] () where
+instance AllCTRender '[Blank] NoContent where
   handleAcceptH _ _ _ = Just ("text/plain","")
 
 instance FromJSON a => MimeUnrender Blank a where
