@@ -2,6 +2,7 @@ module Network.AWS.SNS.Webhook (
   MonadSNSWebhook
 , SnsWebhookApi
 , HasDownloadSNSCertificate (..)
+, ConfirmSubscription (..)
 , VerificationError (..)
 , CertificateCache
 , Notification (..)
@@ -13,6 +14,7 @@ module Network.AWS.SNS.Webhook (
 
 , downloadSNSCertificateDefault
 , downloadSNSCertificateWithCache
+, confirmSubscriptionHttpClient
 , withCertCache
 , embeddedCertificateStore
 
