@@ -1,4 +1,3 @@
-{-# LANGUAGE ConstraintKinds   #-}
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
@@ -6,7 +5,6 @@
 {-# LANGUAGE TemplateHaskell   #-}
 module Network.AWS.SNS.Webhook.Verify (
   HasDownloadSNSCertificate (..)
-, MonadVerify
 , VerificationError (..)
 , CertificateCache
 , verifyMessage
@@ -83,14 +81,13 @@ data VerificationError
   | InvalidSigningCertUrl
   deriving (Show, Generic, Exception)
 
+{-
 type MonadVerify m r e =
-  ( MonadReader r m
-  , HasType CertificateStore r
-  , HasType ValidationCache r
-  , MonadError e m
+  ( MonadError e m
   , AsType VerificationError e
   , MonadIO m
   )
+  -}
 
 class HasDownloadSNSCertificate m where
   -- | Download a 'Certificate' from the 'SigningCertUrl'.
@@ -102,8 +99,8 @@ class HasDownloadSNSCertificate m where
 -- | Verifies the signature of a 'Message' using the 'HasDownloadSNSCertificate'
 -- implemenatition to produce a verified certificate from the Url
 verifyMessage
-  :: ( MonadVerify m r e
-     , HasDownloadSNSCertificate m
+  :: ( HasDownloadSNSCertificate m
+     , Monad m
      )
   => Message a
   -> m SignatureVerification
@@ -116,7 +113,13 @@ verifyMessage message = do
 --
 -- Useful to implement 'downloadSNSCertificate'
 parseAndVerifySNSCertificate
-  :: MonadVerify m r e
+  :: ( MonadReader r m
+     , HasType CertificateStore r
+     , HasType ValidationCache r
+     , MonadError e m
+     , AsType VerificationError e
+     , MonadIO m
+     )
   => ByteString
   -> m Certificate
 parseAndVerifySNSCertificate s = do
@@ -147,8 +150,13 @@ verifyMessageWithCert cert msg = verify (msg^.messageSignedText) (msg^.messageSi
 -- download or verify the certificate
 downloadSNSCertificateDefault
   :: ( MonadCatch m
-     , MonadVerify m r e
      , HasType Manager r
+     , MonadReader r m
+     , HasType CertificateStore r
+     , HasType ValidationCache r
+     , MonadError e m
+     , AsType VerificationError e
+     , MonadIO m
      )
   => [T.Text]
   -> Url
@@ -179,9 +187,14 @@ type CertificateCache = Cache.Cache Url Certificate
 -- 'CertificateCache'.
 downloadSNSCertificateWithCache
   :: ( MonadCatch m
-     , MonadVerify m r e
+     , MonadReader r m
      , HasType Manager r
      , HasType CertificateCache r
+     , HasType CertificateStore r
+     , HasType ValidationCache r
+     , MonadIO m
+     , MonadError e m
+     , AsType VerificationError e
      )
   => [T.Text]
   -> Url

@@ -59,8 +59,9 @@ type SnsWebhookApi a =
   ReqBody '[Blank] (Message a) :> PostNoContent '[Blank] ()
 
 type MonadSNSWebhook m r e =
-  ( MonadVerify m r e
-  , AsType ServantErr e
+  ( AsType ServantErr e
+  , MonadError e m
+  , AsType VerificationError e
   , MonadLogger m
   , HasDownloadSNSCertificate m
   , ConfirmSubscription m
