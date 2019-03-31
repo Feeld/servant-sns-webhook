@@ -13,10 +13,11 @@
 
 module Network.AWS.SNS.Webhook.Server (
   MonadSNSWebhook
+, ConfirmSubscription(..)
 , SnsWebhookApi
 , webhookServerT
 , webhookServer
-, confirmSubscription
+, confirmSubscriptionHttpClient
 ) where
 
 import           Network.AWS.SNS.Webhook.Types
@@ -58,11 +59,11 @@ type SnsWebhookApi a =
   ReqBody '[Blank] (Message a) :> PostNoContent '[Blank] ()
 
 type MonadSNSWebhook m r e =
-  ( HasType Manager r
-  , MonadVerify m r e
+  ( MonadVerify m r e
   , AsType ServantErr e
   , MonadLogger m
   , HasDownloadSNSCertificate m
+  , ConfirmSubscription m
   , MonadCatch m
   )
 
@@ -107,6 +108,9 @@ instance HasDownloadSNSCertificate WebhookHandler where
   -- monad that 'webhookServer' uses only downloads certificates from domains
   -- which belong to amazonaws and caches them
   downloadSNSCertificate = downloadSNSCertificateWithCache [".amazonaws.com"]
+
+instance ConfirmSubscription WebhookHandler where
+  confirmSubscription = confirmSubscriptionHttpClient
 
 runWebhookServer :: WebhookEnv -> WebhookHandler a -> Handler a
 runWebhookServer env hdlr = do
@@ -159,7 +163,10 @@ throwIfUnverifiable msg = do
         <> ": " <> toS (show msg)
       throwing _Typed err403
 
-confirmSubscription
+class ConfirmSubscription m where
+  confirmSubscription :: Url -> Text -> Text -> m ()
+
+confirmSubscriptionHttpClient
   :: ( MonadError e m
      , AsType ServantErr e
      , MonadReader r m
@@ -168,7 +175,7 @@ confirmSubscription
      , MonadCatch m
      )
   => Url -> Text -> Text -> m ()
-confirmSubscription (Url subscribeUrl) token topicArn = do
+confirmSubscriptionHttpClient (Url subscribeUrl) token topicArn = do
   let mReq = requestFromURI subscribeUrl
          <&> setQueryString
              [ ("Action",   Just "ConfirmSubscription")
