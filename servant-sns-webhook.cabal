@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                servant-sns-webhook
-version:             0.1.0.0
+version:             0.2.0.0
 -- synopsis:
 -- description:
 homepage:            https://github.com/Feeld/servant-sns-webhook
@@ -43,8 +43,8 @@ library
     unordered-containers >=0.2 && <0.3,
     text >=1.2 && <1.3,
     monad-logger >=0.3 && <0.4,
-    servant-server >=0.15 && <0.16,
-    servant >=0.15 && <0.16,
+    servant-server >=0.16 && <0.17,
+    servant >=0.16 && <0.17,
     file-embed >=0 && <1,
     network-uri >=2.6 && <2.7
   hs-source-dirs:      src

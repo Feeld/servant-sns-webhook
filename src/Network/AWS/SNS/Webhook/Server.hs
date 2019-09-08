@@ -50,7 +50,7 @@ import           Servant                        ((:>), Accept (..), Handler,
                                                  JSON, MimeUnrender (..),
                                                  NoContent (..), PlainText,
                                                  PostNoContent, ReqBody,
-                                                 ServantErr (errBody), err400,
+                                                 ServerError (errBody), err400,
                                                  err403, err500, err504,
                                                  hoistServer, runHandler)
 import           Servant.API.ContentTypes       (AllCTRender (handleAcceptH))
@@ -60,7 +60,7 @@ type SnsWebhookApi a =
   ReqBody '[Blank,JSON] (Message a) :> PostNoContent '[Blank,JSON,PlainText] NoContent
 
 type MonadSNSWebhook m r e =
-  ( AsType ServantErr e
+  ( AsType ServerError e
   , MonadError e m
   , AsType VerificationError e
   , MonadLogger m
@@ -77,7 +77,7 @@ data WebhookEnv = WebhookEnv
   } deriving Generic
 
 data WebhookError
-  = WebhookServantError ServantErr
+  = WebhookServerError ServerError
   | WebhookVerificationError VerificationError
   deriving (Show, Generic)
 
@@ -118,7 +118,7 @@ runWebhookServer :: WebhookEnv -> WebhookHandler a -> Handler a
 runWebhookServer env hdlr = do
   eRet <- runExceptT $ runReaderT (runStderrLoggingT hdlr) env
   case eRet of
-    Left e@(WebhookServantError err) -> logE e >> throwError err
+    Left e@(WebhookServerError err) -> logE e >> throwError err
     Left e@(WebhookVerificationError NoCertificates) -> logE e >> throwError badConfig
     Left e@(WebhookVerificationError (InvalidCertificate _ _)) -> logE e >> throwError err403
     Left e@(WebhookVerificationError InvalidSigningCertUrl) -> logE e >> throwError err403
@@ -144,7 +144,9 @@ webhookServerT onNotification msg = do
       logInfoN $ "Confirmed subscription to " <> topicArn
       pure NoContent
 
-    MsgNotification _ notification -> onNotification notification >> pure NoContent
+    MsgNotification _ notification -> do
+      logDebugN $ "Received notification " <> toS (show notification)
+      onNotification notification >> pure NoContent
 
     MsgUnsubscribeConfirmation _ Confirmation{topicArn} -> do
       logInfoN $ "Received UnsubscribeConfirmation to " <> topicArn
@@ -172,7 +174,7 @@ class ConfirmSubscription m where
 
 confirmSubscriptionHttpClient
   :: ( MonadError e m
-     , AsType ServantErr e
+     , AsType ServerError e
      , MonadReader r m
      , HasType Manager r
      , MonadIO m
