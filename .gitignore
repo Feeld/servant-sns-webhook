@@ -3,7 +3,7 @@
 dist
 dist-newstyle/
 cabal.project.local
-result
+result*
 .pre-commit-config.yaml
 stack.yaml.lock
 .stack-work
