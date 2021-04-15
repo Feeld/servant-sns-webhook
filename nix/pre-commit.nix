@@ -16,7 +16,7 @@ in
     hooks = {
       # nixpkgs-fmt.enable = true;
       # hlint.enable = true;
-      # ormolu.enable = true;
+      ormolu.enable = true;
     };
   };
 }

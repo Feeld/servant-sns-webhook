@@ -1,5 +1,4 @@
-# servant-sns-webhook
-
+# Servant SNS Webhook
 
 ## Setting up a feedback loop
 
@@ -7,4 +6,3 @@
 - `cd fld-logger`
 - `nix-shell`
 - `stack test --file-watch`
-
