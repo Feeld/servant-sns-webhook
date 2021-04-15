@@ -14,7 +14,7 @@ in
   check = nix-pre-commit-hooks.run {
     src = pkgs.gitignoreSource ../.;
     hooks = {
-      # nixpkgs-fmt.enable = true;
+      nixpkgs-fmt.enable = true;
       # hlint.enable = true;
       ormolu.enable = true;
     };
