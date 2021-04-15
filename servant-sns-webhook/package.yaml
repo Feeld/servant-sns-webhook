@@ -4,6 +4,9 @@ version:             0.2.0.0
 dependencies:
 - base >= 4.12 && < 5
 
+extra-source-files:
+  - R1-ServerCA1B.pem
+
 library:
   source-dirs: src
   ghc-options: -Wall -Wincomplete-record-updates -Wpartial-fields -Widentities -Wredundant-constraints -Wcpp-undef -Wcompat

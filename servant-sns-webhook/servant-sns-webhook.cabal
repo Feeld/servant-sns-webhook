@@ -7,6 +7,8 @@ cabal-version: 1.12
 name:           servant-sns-webhook
 version:        0.2.0.0
 build-type:     Simple
+extra-source-files:
+    R1-ServerCA1B.pem
 
 library
   exposed-modules:
