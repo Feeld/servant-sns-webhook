@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -88,6 +87,7 @@ import Network.HTTP.Client
     responseBody,
   )
 import Network.URI (uriAuthority, uriRegName)
+import System.Clock as TimeSpec (TimeSpec, fromNanoSecs)
 import UnliftIO.Async (async, cancel)
 import UnliftIO.Concurrent (threadDelay)
 
@@ -96,15 +96,9 @@ data VerificationError
   | InvalidCertificate [FailedReason] CertificateChain
   | CertificateDowloadError SomeException
   | InvalidSigningCertUrl
-  deriving (Show, Generic, Exception)
+  deriving (Show, Generic)
 
-{-
-type MonadVerify m r e =
-  ( MonadError e m
-  , AsType VerificationError e
-  , MonadIO m
-  )
-  -}
+instance Exception VerificationError
 
 class HasDownloadSNSCertificate m where
   -- | Download a 'Certificate' from the 'SigningCertUrl'.
@@ -244,7 +238,7 @@ withCertCache ::
 withCertCache expireTime f = bracket initialize destroy (f . fst)
   where
     initialize = liftIO $ do
-      cache <- Cache.newCache (Just (fromIntegral (toNanoSeconds expireTime)))
+      cache <- Cache.newCache (Just (toTimeSpec expireTime))
       reaper <- async $
         forever $ do
           threadDelay (60 * 1000000) -- Purge expired every minute
@@ -253,8 +247,8 @@ withCertCache expireTime f = bracket initialize destroy (f . fst)
 
     destroy (_, reaper) = cancel reaper
 
-    toNanoSeconds :: NominalDiffTime -> Int
-    toNanoSeconds = floor . (* 1e9)
+    toTimeSpec :: NominalDiffTime -> TimeSpec
+    toTimeSpec = TimeSpec.fromNanoSecs . floor . (* 1e9)
 
 -- | An embedded 'CertificateStore' which contains
 -- https://www.amazontrust.com/repository/R1-ServerCA1B.pem

@@ -66,7 +66,9 @@ instance ToJSON Signature where
 
 instance FromJSON Signature where
   parseJSON = withText "Signature" $ \s ->
-    either fail (pure . Signature) $ B64.decode (toS s)
+    case B64.decode (toS s) of
+      Left err -> fail err
+      Right r -> pure $ Signature r
 
 newtype Url = Url URI
   deriving stock (Generic)
@@ -80,8 +82,10 @@ instance ToJSON Url where
 
 instance FromJSON Url where
   parseJSON =
-    withText "Url" $
-      maybe (fail "invalid URI") (pure . Url) . parseURIReference . toS
+    withText "Url" $ \t ->
+      case parseURIReference (toS t) of
+        Nothing -> fail "Invalid URI"
+        Just u -> pure $ Url u
 
 data Message a
   = MsgNotification SignedText (Notification a)
@@ -167,17 +171,14 @@ instance FromJSON a => FromJSON (Message a) where
     type_ <- o .: "Type"
     case type_ :: Text of
       "Notification" ->
-        MsgNotification
-          <$> pure (notificationSignedText o)
-          <*> parseJSON (Object o)
+        MsgNotification (notificationSignedText o)
+          <$> parseJSON (Object o)
       "SubscriptionConfirmation" ->
-        MsgSubscriptionConfirmation
-          <$> pure (confirmationSignedText o)
-          <*> parseJSON (Object o)
+        MsgSubscriptionConfirmation (confirmationSignedText o)
+          <$> parseJSON (Object o)
       "UnsubscribeConfirmation" ->
-        MsgUnsubscribeConfirmation
-          <$> pure (confirmationSignedText o)
-          <*> parseJSON (Object o)
+        MsgUnsubscribeConfirmation (confirmationSignedText o)
+          <$> parseJSON (Object o)
       _ -> fail "Unknown Type"
 
 newtype Embedded a = Embedded {unEmbedded :: a}
@@ -186,9 +187,10 @@ newtype Embedded a = Embedded {unEmbedded :: a}
 
 instance FromJSON a => FromJSON (Embedded a) where
   parseJSON =
-    withText
-      "Embedded"
-      (fmap Embedded . either fail pure . eitherDecodeStrict . toS)
+    withText "Embedded" $ \t ->
+      case eitherDecodeStrict (toS t) of
+        Left err -> fail err
+        Right r -> pure (Embedded r)
 
 instance ToJSON a => ToJSON (Embedded a) where
   toJSON = String . toS . Data.Aeson.encode . unEmbedded

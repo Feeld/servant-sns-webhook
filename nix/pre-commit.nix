@@ -15,7 +15,7 @@ in
     src = pkgs.gitignoreSource ../.;
     hooks = {
       nixpkgs-fmt.enable = true;
-      # hlint.enable = true;
+      hlint.enable = true;
       ormolu.enable = true;
     };
   };

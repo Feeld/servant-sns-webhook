@@ -27,6 +27,7 @@ library
     , base64-bytestring
     , bytestring
     , cache
+    , clock
     , cryptostore
     , exceptions
     , file-embed
