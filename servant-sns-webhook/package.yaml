@@ -1,0 +1,52 @@
+name:                servant-sns-webhook
+version:             0.2.0.0
+
+dependencies:
+- base >= 4.12 && < 5
+
+library:
+  source-dirs: src
+  ghc-options: -Wall -Wincomplete-record-updates -Wpartial-fields -Widentities -Wredundant-constraints -Wcpp-undef -Wcompat
+  dependencies:
+    - aeson
+    - base64-bytestring
+    - bytestring
+    - cache
+    - cryptostore
+    - exceptions
+    - file-embed
+    - generic-lens
+    - hashable
+    - http-client
+    - lens
+    - monad-logger
+    - mtl
+    - network-uri
+    - safe-exceptions
+    - servant
+    - servant-server
+    - string-conv
+    - text
+    - time
+    - unliftio
+    - unordered-containers
+    - x509
+    - x509-store
+    - x509-validation
+
+executables:
+  sns-webhook-example:
+    main: Main.hs
+    source-dirs: example
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - aeson
+    - bytestring
+    - http-client-tls
+    - servant-server
+    - servant-sns-webhook
+    - text
+    - warp

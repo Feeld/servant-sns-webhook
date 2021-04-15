@@ -1,0 +1,10 @@
+# Because that's what we have in the nixpkgs version that we use.
+resolver: lts-16.12
+
+packages:
+- servant-sns-webhook
+extra-deps:
+- cryptostore-0.2.1.0@sha256:9896e2984f36a1c8790f057fd5ce3da4cbcaf8aa73eb2d9277916886978c5b19,3881
+nix:
+  shell-file: shell.nix
+  add-gc-roots: true
