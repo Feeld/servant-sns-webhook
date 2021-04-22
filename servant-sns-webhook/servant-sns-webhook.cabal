@@ -1,0 +1,70 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           servant-sns-webhook
+version:        0.2.0.0
+build-type:     Simple
+extra-source-files:
+    R1-ServerCA1B.pem
+
+library
+  exposed-modules:
+      Network.AWS.SNS.Webhook
+      Network.AWS.SNS.Webhook.Server
+      Network.AWS.SNS.Webhook.Types
+      Network.AWS.SNS.Webhook.Verify
+  other-modules:
+      Paths_servant_sns_webhook
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wincomplete-record-updates -Wpartial-fields -Widentities -Wredundant-constraints -Wcpp-undef -Wcompat
+  build-depends:
+      aeson
+    , base >=4.12 && <5
+    , base64-bytestring
+    , bytestring
+    , cache
+    , clock
+    , cryptostore
+    , exceptions
+    , file-embed
+    , generic-lens
+    , hashable
+    , http-client
+    , lens
+    , monad-logger
+    , mtl
+    , network-uri
+    , safe-exceptions
+    , servant
+    , servant-server
+    , string-conv
+    , text
+    , time
+    , unliftio
+    , unordered-containers
+    , x509
+    , x509-store
+    , x509-validation
+  default-language: Haskell2010
+
+executable sns-webhook-example
+  main-is: Main.hs
+  other-modules:
+      Paths_servant_sns_webhook
+  hs-source-dirs:
+      example
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.12 && <5
+    , bytestring
+    , http-client-tls
+    , servant-server
+    , servant-sns-webhook
+    , text
+    , warp
+  default-language: Haskell2010
